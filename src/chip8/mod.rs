@@ -1,40 +1,86 @@
-mod sound;
-mod keyboard;
+//mod sound;
 
-use sound::SoundPlayer;
-use rand::Rng;
+//use sound::SoundPlayer;
+use fastrand;
 use std::{thread, time::{self, Duration}};
 use std::sync::{Arc, atomic::{AtomicU8, Ordering}};
 
 const TIMER_DELAY: Duration = time::Duration::from_millis(16);
+const DISPLAY_WIDTH: u8 = 64;
+const DISPLAY_HEIGHT: u8 = 32;
+const FONT_START_ADDRESS: u8 = 0;
+const FONT_CHAR_SIZE_IN_BYTES: u8 = 5;
 
-pub struct CPU {
-    pub registers: [u8; 16],
-    pub i_register: u16,
-    pub sound_timer_register: Arc<AtomicU8>,
-    pub delay_timer_register: Arc<AtomicU8>,
-    pub position_in_memory: usize,
-    pub memory: [u8; 4096],
-    pub stack: [u16; 16],
-    pub stack_pointer: usize,
+pub struct Chip8 {
+    registers: [u8; 16],
+    i_register: u16,
+    sound_timer_register: Arc<AtomicU8>,
+    delay_timer_register: Arc<AtomicU8>,
+    position_in_memory: usize,
+    memory: [u8; 4096],
+    stack: [u16; 16],
+    stack_pointer: usize,
+    display: [[u8; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
+    keyboard: [bool; 16]
 }
 
-impl CPU {
+impl Chip8 {
+
+    pub fn new() -> Self {
+        let sound_timer_register = Arc::new(AtomicU8::new(0));
+        let delay_timer_register = Arc::new(AtomicU8::new(0));
+
+        let sound_timer_clone = sound_timer_register.clone();
+        thread::spawn(move || {
+            Chip8::run_sound_timer_loop(sound_timer_clone);
+        });
+
+        let delay_timer_clone = delay_timer_register.clone();
+        thread::spawn(move || {
+            Chip8::run_delay_timer_loop(delay_timer_clone);
+        });
+
+        let mut chip8 = Chip8 {
+            registers: [0; 16],
+            i_register: 0,
+            sound_timer_register,
+            delay_timer_register,
+            memory: [0; 4096],
+            position_in_memory: 0,
+            stack: [0; 16],
+            stack_pointer: 0,
+            display: [[0; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize],
+            keyboard: [false; 16]
+        };
+
+        chip8.fill_reserved_memory();
+        chip8
+    }
+
+    pub fn get_display(&self) -> &[[u8; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize]
+    {
+        &self.display
+    }
+
+    pub fn set_key(&mut self, key: u8, is_pressed: bool)
+    {
+        self.keyboard[key as usize] = is_pressed;
+    } 
 
     fn run_sound_timer_loop(sound_timer_register: Arc<AtomicU8>)
     {
-        let mut sound = SoundPlayer::new();
+        // let mut sound = SoundPlayer::new();
 
         loop {
             let value = sound_timer_register.load(Ordering::Relaxed);
             if value != 0
             {
-                sound.ensure_playing();
+                // sound.ensure_playing();
                 sound_timer_register.fetch_sub(1, Ordering::Relaxed);
                 thread::sleep(TIMER_DELAY);
             }
 
-            sound.ensure_stopped();
+            // sound.ensure_stopped();
         }
     }
 
@@ -50,53 +96,115 @@ impl CPU {
         }
     }
 
-    pub fn run(&mut self) {
+    fn fill_reserved_memory(&mut self) {
+        let fontset: [u8; 80] = [
+            // 0
+            0xF0, 0x90, 0x90, 0x90, 0xF0,
+            // 1
+            0x20, 0x60, 0x20, 0x20, 0x70,
+            // 2
+            0xF0, 0x10, 0xF0, 0x80, 0xF0,
+            // 3
+            0xF0, 0x10, 0xF0, 0x10, 0xF0,
+            // 4
+            0x90, 0x90, 0xF0, 0x10, 0x10,
+            // 5
+            0xF0, 0x80, 0xF0, 0x10, 0xF0,
+            // 6
+            0xF0, 0x80, 0xF0, 0x90, 0xF0,
+            // 7
+            0xF0, 0x10, 0x20, 0x40, 0x40,
+            // 8
+            0xF0, 0x90, 0xF0, 0x90, 0xF0,
+            // 9
+            0xF0, 0x90, 0xF0, 0x10, 0xF0,
+            // A
+            0xF0, 0x90, 0xF0, 0x90, 0x90,
+            // B
+            0xE0, 0x90, 0xE0, 0x90, 0xE0,
+            // C
+            0xF0, 0x80, 0x80, 0x80, 0xF0,
+            // D
+            0xE0, 0x90, 0x90, 0x90, 0xE0,
+            // E
+            0xF0, 0x80, 0xF0, 0x80, 0xF0,
+            // F
+            0xF0, 0x80, 0xF0, 0x80, 0x80,
+        ];
+
+        for (i, &byte) in fontset.iter().enumerate() {
+          self.memory[i] = byte;
+        }
+    }
+
+    pub fn execute_step(&mut self) {
         
-        let sound_timer_register_clone = self.sound_timer_register.clone();
-        thread::spawn(move || {
-            CPU::run_sound_timer_loop(sound_timer_register_clone);
-        });
+        let  opcode = self.read_opcode();
+        self.position_in_memory += 2;
 
-        let delay_timer_register_clone = self.delay_timer_register.clone();
-        thread::spawn(move || {
-            CPU::run_delay_timer_loop(delay_timer_register_clone);
-        });
+        match opcode {
+            0x0000 => { return; } // For now: stop cpu run to go through complete memory
+            0x00E0 => { self.cls(); } // Clear the display
+            0x00EE => { self.ret(); }, // Return from a subroutine
+            0x0000..=0x0FFF => {}, // Jump to machine code routine at nnn
+            0x1000..=0x1FFF => { self.jp_addr(opcode); }, // Jump to location nnn
+            0x2000..=0x2FFF => { self.call_addr(opcode); }, // Call subroutine at nnn
+            0x3000..=0x4FFF => { self.se_and_sne_vx_byte(opcode)} // Skip next instruction if Vx == kk
+            0x5000..=0x5FF0 => { self.se_vx_vy(opcode) }, // Skip next instruction if Vx == Vy
+            0x6000..=0x6FFF => { self.ld_vx_byte(opcode) }, // Set Vx = kk
+            0x7000..=0x7FFF => { self.add_vx_byte(opcode) }, // set Vx = Vx + kk
+            0x8000..=0x8FFF => {
+                let x = ((opcode & 0x0F00) >> 8) as u8;
+                let y = ((opcode & 0x00F0) >> 4) as u8;
+                let operation_type = (opcode & 0x000F) as u8;
 
-        loop {          
-            let  opcode = self.read_opcode();
-            self.position_in_memory += 2;
-
-            match (opcode) {
-                0x0000 => { return; } // For now: stop cpu run to go through complete memory
-                0x00E0 => { } // Clear the display
-                0x00EE => { self.ret(); }, // Return from a subroutine
-                0x0000..=0x0FFF => {}, // Jump to machine code routine at nnn
-                0x1000..=0x1FFF => { self.jp(opcode); }, // Jump to location nnn
-                0x2000..=0x2FFF => { self.call(opcode); }, // Call subroutine at nnn
-                0x3000..=0x4FFF => { self.se_and_sne(opcode)} // Skip next instruction if Vx == kk
-                0x5000..=0x5FF0 => { self.se_register_only(opcode) }, // Skip next instruction if Vx == Vy
-                0x6000..=0x6FFF => { self.ld(opcode) }, // Set Vx = kk
-                0x7000..=0x7FFF => { self.add(opcode) }, // set Vx = Vx + kk
-                0x8000..=0x8FFF => {
-                    let x = ((opcode & 0x0F00) >> 8) as u8;
-                    let y = ((opcode & 0x00F0) >> 4) as u8;
-                    let operation_type = (opcode & 0x000F) as u8;
-
-                    match (operation_type)
-                    {
-                        0x1 => self.or(x, y),
-                        0x2 => self.and(x,y),
-                        0x3 => self.xor(x,y),
-                        0x4 => self.add_register_only(x,y),
-                        0x5 => self.sub(x,y),
-                        0x6 => self.shr(x,y),
-                        0x7 => self.subn(x, y),
-                        0xE => self.shl(x, y),
-                        _ => todo!("opcode {:04x}", opcode),
-                    }
+                match (operation_type)
+                {
+                    0x0 => self.ld_vx_vy(x, y),
+                    0x1 => self.or_vx_vy(x, y),
+                    0x2 => self.and_vx_vy(x,y),
+                    0x3 => self.xor_vx_vy(x,y),
+                    0x4 => self.add_vx_vy(x,y),
+                    0x5 => self.sub_vx_vy(x,y),
+                    0x6 => self.shr_vx_vy(x,y),
+                    0x7 => self.subn_vx_vy(x, y),
+                    0xE => self.shl_vx_vy(x, y),
+                    _ => todo!("opcode {:04x}", opcode),
                 }
-                _ => todo!("opcode {:04x}", opcode),
             }
+            0x9000..=0x9FFF => { self.sne_vx_vy(opcode); }
+            0xA000..=0xAFFF => { self.ld_i_addr(opcode); }
+            0xB000..=0xBFFF => { self.jp_v0_addr(opcode); }
+            0xC000..=0xCFFF => { self.rnd_vx_byte(opcode); }
+            0xD000..=0xDFFF => { self.drw_vx_vy_nibble(opcode); }
+            0xE000..=0xEFFF => { 
+                let operation_type = (opcode & 0x00FF)  as u16;
+                
+                match (operation_type)
+                {
+                    0x9E => self.skp_vx(opcode),
+                    0xA1 => self.sknp_vx(opcode),
+                    _ => todo!("opcode {:04x}", opcode)
+                }
+            }
+            0xF000..=0xFFFF => { 
+                let operation_type = (opcode & 0x00FF) as u16;
+                
+                match (operation_type)
+                {
+                    0x07 => self.ld_vx_dt(opcode),
+                    0x0A => self.ld_vx_k(opcode),
+                    0x15 => self.ld_dt_vx(opcode),
+                    0x18 => self.ld_st_vx(opcode),
+                    0x1E => self.add_i_vx(opcode),
+                    0x29 => self.ld_f_vx(opcode),
+                    0x33 => self.ld_b_vx(opcode),
+                    0x55 => self.ld_i_fx(opcode),
+                    0x65 => self.ld_vx_i(opcode),
+                    _ => todo!("opcode {:04x}", opcode)
+                }
+            }
+             _ => todo!("opcode {:04x}", opcode),
         }
     }
 
@@ -108,6 +216,15 @@ impl CPU {
         (op_byte1 << 8) | op_byte2
     }
 
+    fn cls(self: &mut Self) {
+        for row in self.display.iter_mut() {
+            for pixel in row.iter_mut()
+            {
+                *pixel = 0;
+            }
+        }
+    }
+
     fn ret(&mut self) {
         if self.stack_pointer == 0 {
             panic!("Stack underflow");
@@ -117,12 +234,12 @@ impl CPU {
         self.position_in_memory = self.stack[self.stack_pointer] as usize;
     }
 
-    fn jp(&mut self, opcode: u16) {
+    fn jp_addr(&mut self, opcode: u16) {
         let addr = opcode & 0x0FFF;
         self.position_in_memory = addr as usize;
     }
 
-    fn call(&mut self, opcode: u16) {
+    fn call_addr(&mut self, opcode: u16) {
         let addr = opcode & 0x0FFF;
 
         let sp = self.stack_pointer;
@@ -138,7 +255,7 @@ impl CPU {
     }
 
 
-    fn se_and_sne(&mut self, opcode: u16) {
+    fn se_and_sne_vx_byte(&mut self, opcode: u16) {
         let should_be_equal = ((opcode & 0xF000) >> 12) == 0x3;
 
         let x = ((opcode & 0x0F00) >> 8) as u8;
@@ -151,7 +268,7 @@ impl CPU {
         }
     }
 
-    fn se_register_only(&mut self, opcode: u16) {
+    fn se_vx_vy(&mut self, opcode: u16) {
         let x = ((opcode & 0x0F00) >> 8) as u8;
         let y = ((opcode & 0x00F0) >> 4) as u8;
 
@@ -160,50 +277,57 @@ impl CPU {
         }
     }
 
-    fn ld(&mut self, opcode: u16) {
+    fn ld_vx_byte(&mut self, opcode: u16) {
         let kk = (opcode & 0x00FF) as u8;
         let x = ((opcode & 0x0F00) >> 8) as u8;
 
         self.registers[x as usize] = kk;
     }
 
-    fn add(&mut self, opcode: u16) {
+    fn add_vx_byte(&mut self, opcode: u16) {
         let kk = (opcode & 0x00FF) as u8;
         let x = ((opcode & 0x0F00) >> 8) as u8;
 
        self.registers[x as usize] += kk; 
     }
+
+    fn ld_vx_vy(&mut self, x: u8, y: u8)
+    {
+        self.registers[x as usize] = self.registers[y as usize];
+    }
    
-    fn or(&mut self, x: u8, y: u8) {
+    fn or_vx_vy(&mut self, x: u8, y: u8) {
         self.registers[x as usize]  |= self.registers[y as usize];
     }
     
-    fn and(&mut self, x: u8, y: u8) {
+    fn and_vx_vy(&mut self, x: u8, y: u8) {
         self.registers[x as usize]  &= self.registers[y as usize];
     }
     
-    fn xor(&mut self, x: u8, y: u8) {
+    fn xor_vx_vy(&mut self, x: u8, y: u8) {
         self.registers[x as usize]  ^= self.registers[y as usize];
     }
     
-    fn add_register_only(&mut self, x: u8, y: u8) {
-        // TODO: set VF = carry
-        self.registers[x as usize]  += self.registers[y as usize];
+    fn add_vx_vy(&mut self, x: u8, y: u8) {
+        let (sum, carry) = self.registers[x as usize].overflowing_add(self.registers[y as usize]);
+        self.registers[0xF] = if carry { 1 } else { 0 };
+        self.registers[x as usize] = sum;
     }
 
-    fn sub(&mut self, x: u8, y: u8) {
-        // TODO: set VF = NOT borrow
-        self.registers[x as usize]  -= self.registers[y as usize];
+    fn sub_vx_vy(&mut self, x: u8, y: u8) {
+        let (res, borrow) = self.registers[x as usize].overflowing_sub(self.registers[y as usize]);
+        self.registers[0xF] = if borrow { 0 } else { 1 };
+        self.registers[x as usize] = res;
     }
     
-    fn shr(&mut self, x: u8, y: u8) {
+    fn shr_vx_vy(&mut self, x: u8, y: u8) {
         let lsb = self.registers[x as usize] & 1;
         self.registers[0xF] = lsb;
 
         self.registers[x as usize] /= 2;
     }
     
-    fn subn(&mut self, x: u8, y: u8) {
+    fn subn_vx_vy(&mut self, x: u8, y: u8) {
         if (self.registers[x as usize] < self.registers[y as usize])
         {
             self.registers[0xF] = 1;
@@ -214,11 +338,9 @@ impl CPU {
         }
 
         self.registers[x as usize]  = self.registers[y as usize] - self.registers[x as usize];
-        
-        // TODO: set VF = not borrow
     }
     
-    fn shl(&mut self, x: u8, y: u8) {
+    fn shl_vx_vy(&mut self, x: u8, y: u8) {
         let msb = self.registers[x as usize] >> 7;
         self.registers[0xF] = msb;
         
@@ -251,23 +373,57 @@ impl CPU {
         let x = ((opcode & 0x0F00) >> 8) as u8;
         let kk = (opcode & 0x00FF) as u8;
 
-        let number: u8 = rand::rng().random_range(0..=255);
+        let number: u8 = fastrand::u8(0..=255);
         self.registers[x as usize] = (number & kk);
     }
 
     fn drw_vx_vy_nibble(&mut self, opcode: u16)
     {
+        let x= ((opcode & 0x0F00) >> 8) as u8;
+        let y= ((opcode & 0x00F0) >> 4) as u8;
+        let n= (opcode & 0x000F) as u8;
+        
+        let x_pos = self.registers[x as usize];
+        let y_pos = self.registers[y as usize];
+        let mut is_switched_off = false;
+        
+        for byte_row_index in 0..n {
+            let byte = self.memory[(self.i_register) as usize + byte_row_index as usize];
 
+            for bit_index in 0..8 {
+                let pixel_x = (x_pos + bit_index) % DISPLAY_WIDTH; 
+                let pixel_y = (y_pos + byte_row_index) % DISPLAY_HEIGHT; 
+                
+                let bit_value = (byte >> (7 - bit_index)) & 1;
+                let old_pixel = self.display[pixel_y as usize][pixel_x as usize];
+                self.display[pixel_y as usize][pixel_x as usize] ^= bit_value; 
+            
+                if old_pixel == 1 && !self.display[pixel_y as usize][pixel_x as usize] == 0
+                {
+                   is_switched_off = true; 
+                }
+            } 
+        }
+
+        self.registers[0xF] = if is_switched_off { 1 } else { 0 };
     }
 
-    fn skip_vx(&mut self, opcode: u16)
+    fn skp_vx(&mut self, opcode: u16)
     {
-        // keyboard needed
+        let x = ((opcode & 0x0F00) >> 8) as u8;  
+        if self.keyboard[self.registers[x as usize] as usize]
+        {
+            self.position_in_memory +=2;
+        }
     }
 
     fn sknp_vx(&mut self, opcode: u16)
     {
-        // keyboard needed
+        let x = ((opcode & 0x0F00) >> 8) as u8;  
+        if !self.keyboard[self.registers[x as usize] as usize]
+        {
+            self.position_in_memory +=2;
+        }
     }
 
     fn ld_vx_dt(&mut self, opcode: u16)
@@ -276,9 +432,25 @@ impl CPU {
         self.registers[x as usize] = self.delay_timer_register.load(Ordering::Relaxed);
     }
 
-    fn lf_vx_k(&mut self, opcode: u16)
+    fn ld_vx_k(&mut self, opcode: u16) 
     {
-        // keyboard needed
+        // This can be improved using async code. 
+        // Specification: All execution stops until a key is pressed, then the value of that key is stored in Vx. 
+        // Does this include keys that are pressed when this opcode is executed?
+        // How to deal with multiple key presses?
+
+        let x = ((opcode & 0x0F00) >> 8) as u8;
+
+        for (index, pressed) in self.keyboard.iter().enumerate()
+        {
+            if *pressed
+            {
+                self.registers[x as usize] = index as u8;
+                return;
+            }
+        }
+
+        self.position_in_memory -= 2;
     }
 
     fn ld_dt_vx(&mut self, opcode: u16)
@@ -301,7 +473,9 @@ impl CPU {
 
     fn ld_f_vx(&mut self, opcode: u16)
     {
-        // TODO: sprite location stuff
+        let x = ((opcode & 0x0F00) >> 8) as u8;  
+        let digit = self.registers[x as usize] as u16;
+        self.i_register = FONT_START_ADDRESS as u16 + FONT_CHAR_SIZE_IN_BYTES as u16 * digit;
     }
 
     fn ld_b_vx(&mut self, opcode: u16)
