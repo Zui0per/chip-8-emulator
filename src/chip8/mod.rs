@@ -1,11 +1,5 @@
-//mod sound;
-
-//use sound::SoundPlayer;
 use fastrand;
-use std::{thread, time::{self, Duration}};
-use std::sync::{Arc, atomic::{AtomicU8, Ordering}};
 
-const TIMER_DELAY: Duration = time::Duration::from_millis(16);
 const DISPLAY_WIDTH: u8 = 64;
 const DISPLAY_HEIGHT: u8 = 32;
 const FONT_START_ADDRESS: u8 = 0;
@@ -14,8 +8,8 @@ const FONT_CHAR_SIZE_IN_BYTES: u8 = 5;
 pub struct Chip8 {
     registers: [u8; 16],
     i_register: u16,
-    sound_timer_register: Arc<AtomicU8>,
-    delay_timer_register: Arc<AtomicU8>,
+    sound_timer: u8,
+    delay_timer: u8,
     position_in_memory: usize,
     memory: [u8; 4096],
     stack: [u16; 16],
@@ -24,27 +18,38 @@ pub struct Chip8 {
     keyboard: [bool; 16]
 }
 
+pub struct RegistersSnapshot {
+    pub V0: u8,
+    pub V1: u8,
+    pub V2: u8,
+    pub V3: u8,
+    pub V4: u8,
+    pub V5: u8,
+    pub V6: u8,
+    pub V7: u8,
+    pub V8: u8,
+    pub V9: u8,
+    pub VA: u8,
+    pub VB: u8,
+    pub VC: u8,
+    pub VD: u8,
+    pub VE: u8,
+    pub VF: u8,
+    pub I: u16,
+    pub delay_timer: u8,
+    pub sound_timer: u8,
+    pub programm_counter: u16,
+    pub stack_pointer: u8,
+}
+
 impl Chip8 {
 
     pub fn new() -> Self {
-        let sound_timer_register = Arc::new(AtomicU8::new(0));
-        let delay_timer_register = Arc::new(AtomicU8::new(0));
-
-        let sound_timer_clone = sound_timer_register.clone();
-        thread::spawn(move || {
-            Chip8::run_sound_timer_loop(sound_timer_clone);
-        });
-
-        let delay_timer_clone = delay_timer_register.clone();
-        thread::spawn(move || {
-            Chip8::run_delay_timer_loop(delay_timer_clone);
-        });
-
         let mut chip8 = Chip8 {
             registers: [0; 16],
             i_register: 0,
-            sound_timer_register,
-            delay_timer_register,
+            sound_timer: 0, 
+            delay_timer: 0,
             memory: [0; 4096],
             position_in_memory: 0,
             stack: [0; 16],
@@ -62,39 +67,36 @@ impl Chip8 {
         &self.display
     }
 
+    pub fn get_register_snapshot(&self) -> RegistersSnapshot {
+        RegistersSnapshot {
+            V0: self.registers[0],
+            V1: self.registers[1],
+            V2: self.registers[2],
+            V3: self.registers[3],
+            V4: self.registers[4],
+            V5: self.registers[5],
+            V6: self.registers[6],
+            V7: self.registers[7],
+            V8: self.registers[8],
+            V9: self.registers[9],
+            VA: self.registers[10],
+            VB: self.registers[11],
+            VC: self.registers[12],
+            VD: self.registers[13],
+            VE: self.registers[14],
+            VF: self.registers[15],
+            I: self.i_register,
+            delay_timer: self.delay_timer,
+            sound_timer: self.sound_timer,
+            programm_counter: self.position_in_memory as u16,
+            stack_pointer: self.stack_pointer as u8
+        }
+    }
+
     pub fn set_key(&mut self, key: u8, is_pressed: bool)
     {
         self.keyboard[key as usize] = is_pressed;
     } 
-
-    fn run_sound_timer_loop(sound_timer_register: Arc<AtomicU8>)
-    {
-        // let mut sound = SoundPlayer::new();
-
-        loop {
-            let value = sound_timer_register.load(Ordering::Relaxed);
-            if value != 0
-            {
-                // sound.ensure_playing();
-                sound_timer_register.fetch_sub(1, Ordering::Relaxed);
-                thread::sleep(TIMER_DELAY);
-            }
-
-            // sound.ensure_stopped();
-        }
-    }
-
-    fn run_delay_timer_loop(delay_timer_register: Arc<AtomicU8>)
-    {
-        loop {
-            let value = delay_timer_register.load(Ordering::Relaxed);
-            if value != 0
-            {
-                delay_timer_register.fetch_sub(1, Ordering::Relaxed);
-                thread::sleep(TIMER_DELAY);
-            }
-        }
-    }
 
     fn fill_reserved_memory(&mut self) {
         let fontset: [u8; 80] = [
@@ -137,13 +139,13 @@ impl Chip8 {
         }
     }
 
-    pub fn execute_step(&mut self) {
+    pub fn execute_step(&mut self) -> u16 {
         
         let  opcode = self.read_opcode();
         self.position_in_memory += 2;
 
         match opcode {
-            0x0000 => { return; } // For now: stop cpu run to go through complete memory
+            0x0000 => { }
             0x00E0 => { self.cls(); } // Clear the display
             0x00EE => { self.ret(); }, // Return from a subroutine
             0x0000..=0x0FFF => {}, // Jump to machine code routine at nnn
@@ -206,6 +208,23 @@ impl Chip8 {
             }
              _ => todo!("opcode {:04x}", opcode),
         }
+        opcode
+    }
+
+    pub fn update_timers(self: &mut Self, elapsed_ms: u16)
+    {
+        let ticks = (elapsed_ms as f64 / 1000.0 * 60.0).floor() as u8;
+        
+        if (ticks > 0)
+        {
+            self.delay_timer = self.delay_timer.saturating_sub(ticks);
+            self.sound_timer = self.sound_timer.saturating_sub(ticks);
+        }
+    }
+
+    pub fn is_sound_active(self: &Self) -> bool
+    {
+        self.sound_timer > 0
     }
 
     fn read_opcode(self: &Self) -> u16 {
@@ -398,7 +417,7 @@ impl Chip8 {
                 let old_pixel = self.display[pixel_y as usize][pixel_x as usize];
                 self.display[pixel_y as usize][pixel_x as usize] ^= bit_value; 
             
-                if old_pixel == 1 && !self.display[pixel_y as usize][pixel_x as usize] == 0
+                if old_pixel == 1 && self.display[pixel_y as usize][pixel_x as usize] == 0
                 {
                    is_switched_off = true; 
                 }
@@ -429,16 +448,11 @@ impl Chip8 {
     fn ld_vx_dt(&mut self, opcode: u16)
     {
         let x = ((opcode & 0x0F00) >> 8) as u8;  
-        self.registers[x as usize] = self.delay_timer_register.load(Ordering::Relaxed);
+        self.registers[x as usize] = self.delay_timer
     }
 
     fn ld_vx_k(&mut self, opcode: u16) 
     {
-        // This can be improved using async code. 
-        // Specification: All execution stops until a key is pressed, then the value of that key is stored in Vx. 
-        // Does this include keys that are pressed when this opcode is executed?
-        // How to deal with multiple key presses?
-
         let x = ((opcode & 0x0F00) >> 8) as u8;
 
         for (index, pressed) in self.keyboard.iter().enumerate()
@@ -456,13 +470,13 @@ impl Chip8 {
     fn ld_dt_vx(&mut self, opcode: u16)
     {
         let x = ((opcode & 0x0F00) >> 8) as u8;  
-        self.delay_timer_register.swap(self.registers[x as usize], Ordering::Relaxed);
+        self.delay_timer = self.registers[x as usize];
     }
 
     fn ld_st_vx(&mut self, opcode: u16)
     {
         let x = ((opcode & 0x0F00) >> 8) as u8;  
-        self.sound_timer_register.swap(self.registers[x as usize], Ordering::Relaxed);
+        self.sound_timer = self.registers[x as usize];
     }
 
     fn add_i_vx(&mut self, opcode: u16)
