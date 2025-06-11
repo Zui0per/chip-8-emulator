@@ -1,12 +1,14 @@
 use fastrand;
 
-const DISPLAY_WIDTH: u8 = 64;
-const DISPLAY_HEIGHT: u8 = 32;
+pub const DISPLAY_WIDTH: u8 = 64;
+pub const DISPLAY_HEIGHT: u8 = 32;
 const FONT_START_ADDRESS: u8 = 0;
 const FONT_CHAR_SIZE_IN_BYTES: u8 = 5;
 
-pub struct Chip8 {
-    registers: [u8; 16],
+const BULLET_HELL: &[u8] = include_bytes!("./roms/danm8ku.ch8");
+const OCTAJAM_TITLE: &[u8] = include_bytes!("./roms/octojam1title.ch8");
+
+pub struct Chip8 { registers: [u8; 16],
     i_register: u16,
     sound_timer: u8,
     delay_timer: u8,
@@ -59,44 +61,9 @@ impl Chip8 {
         };
 
         chip8.fill_reserved_memory();
+        chip8.load_rom();
         chip8
     }
-
-    pub fn get_display(&self) -> &[[u8; DISPLAY_WIDTH as usize]; DISPLAY_HEIGHT as usize]
-    {
-        &self.display
-    }
-
-    pub fn get_register_snapshot(&self) -> RegistersSnapshot {
-        RegistersSnapshot {
-            V0: self.registers[0],
-            V1: self.registers[1],
-            V2: self.registers[2],
-            V3: self.registers[3],
-            V4: self.registers[4],
-            V5: self.registers[5],
-            V6: self.registers[6],
-            V7: self.registers[7],
-            V8: self.registers[8],
-            V9: self.registers[9],
-            VA: self.registers[10],
-            VB: self.registers[11],
-            VC: self.registers[12],
-            VD: self.registers[13],
-            VE: self.registers[14],
-            VF: self.registers[15],
-            I: self.i_register,
-            delay_timer: self.delay_timer,
-            sound_timer: self.sound_timer,
-            programm_counter: self.position_in_memory as u16,
-            stack_pointer: self.stack_pointer as u8
-        }
-    }
-
-    pub fn set_key(&mut self, key: u8, is_pressed: bool)
-    {
-        self.keyboard[key as usize] = is_pressed;
-    } 
 
     fn fill_reserved_memory(&mut self) {
         let fontset: [u8; 80] = [
@@ -139,13 +106,47 @@ impl Chip8 {
         }
     }
 
+    pub fn get_display(&self) -> *const u8 {
+        self.display.as_ptr() as *const u8 
+    }
+
+    pub fn get_register_snapshot(&self) -> RegistersSnapshot {
+        RegistersSnapshot {
+            V0: self.registers[0],
+            V1: self.registers[1],
+            V2: self.registers[2],
+            V3: self.registers[3],
+            V4: self.registers[4],
+            V5: self.registers[5],
+            V6: self.registers[6],
+            V7: self.registers[7],
+            V8: self.registers[8],
+            V9: self.registers[9],
+            VA: self.registers[10],
+            VB: self.registers[11],
+            VC: self.registers[12],
+            VD: self.registers[13],
+            VE: self.registers[14],
+            VF: self.registers[15],
+            I: self.i_register,
+            delay_timer: self.delay_timer,
+            sound_timer: self.sound_timer,
+            programm_counter: self.position_in_memory as u16,
+            stack_pointer: self.stack_pointer as u8
+        }
+    }
+
+    pub fn set_key(&mut self, key: u8, is_pressed: bool)
+    {
+        self.keyboard[key as usize] = is_pressed;
+    } 
+
     pub fn execute_step(&mut self) -> u16 {
         
         let  opcode = self.read_opcode();
         self.position_in_memory += 2;
 
         match opcode {
-            0x0000 => { }
             0x00E0 => { self.cls(); } // Clear the display
             0x00EE => { self.ret(); }, // Return from a subroutine
             0x0000..=0x0FFF => {}, // Jump to machine code routine at nnn
@@ -225,6 +226,15 @@ impl Chip8 {
     pub fn is_sound_active(self: &Self) -> bool
     {
         self.sound_timer > 0
+    }
+
+    pub fn load_rom(self: &mut Self)
+    {
+        let start = 0x200;
+        let end = start + OCTAJAM_TITLE.len();
+        self.memory[start..end].copy_from_slice(OCTAJAM_TITLE);
+        
+        self.position_in_memory = 0x200;
     }
 
     fn read_opcode(self: &Self) -> u16 {
@@ -511,7 +521,7 @@ impl Chip8 {
         let x = ((opcode & 0x0F00) >> 8) as u8;  
         let mut i = self.i_register;
         
-        for n in 0..x 
+        for n in 0..=x 
         {
             self.memory[i as usize] = self.registers[n as usize];
             i += 1;
@@ -523,7 +533,7 @@ impl Chip8 {
         let x = ((opcode & 0x0F00) >> 8) as u8;  
         let mut i = self.i_register;
         
-        for n in 0..x 
+        for n in 0..=x 
         {
             self.registers[n as usize] = self.memory[i as usize];
             i += 1;

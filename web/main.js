@@ -3,69 +3,80 @@ import init, { Emulator } from './chip_8_emulator.js';
 
 async function run() {
   const module = await init();
-
   const emulator = new Emulator();
-
   const canvas = document.getElementById('screen');
   const ctx = canvas.getContext('2d');
-  canvas.width = 64;
-  canvas.height = 32;
+  
+  const width = emulator.get_display_width();
+  const height = emulator.get_display_height();
 
-  // Scale up for visibility
-  const scale = 10;
+  canvas.width = width;
+  canvas.height = height;
+  const scale = 5;
   canvas.style.width = canvas.width * scale + 'px';
   canvas.style.height = canvas.height * scale + 'px';
+  ctx.imageSmoothingEnabled = false;
 
-  // Keyboard map (your CHIP-8 keys to physical keys)
-  const keyMap = {
-    '1': 0x1, '2': 0x2, '3': 0x3, '4': 0xC,
-    'q': 0x4, 'w': 0x5, 'e': 0x6, 'r': 0xD,
-    'a': 0x7, 's': 0x8, 'd': 0x9, 'f': 0xE,
-    'z': 0xA, 'x': 0x0, 'c': 0xB, 'v': 0xF,
-  };
+  const keyMap = { /* ... your keymap ... */ };
+  window.addEventListener('keydown', e => { /* ... */ });
+  window.addEventListener('keyup', e => { /* ... */ });
 
-  window.addEventListener('keydown', e => {
-    const key = keyMap[e.key];
-    if (key !== undefined) {
-      emulator.set_key(key, true);
-      e.preventDefault();
-    }
-  });
+  // ====================================================================
+  // --- THE NEW, FAST RENDER SETUP ---
+  // ====================================================================
+  
+  // 1. Create the ImageData object ONCE. We will reuse it every frame.
+  const imageData = ctx.createImageData(width, height);
+  // Get a direct reference to its pixel buffer.
+  const canvasPixelData = imageData.data;
 
-  window.addEventListener('keyup', e => {
-    const key = keyMap[e.key];
-    if (key !== undefined) {
-      emulator.set_key(key, false);
-      e.preventDefault();
-    }
-  });
+  // Define our ON and OFF colors as RGBA arrays.
+  const onColor = [255, 255, 255, 255]; // White
+  const offColor = [0, 0, 0, 255];     // Black
 
   function render() {
-    const fbPtr = emulator.get_framebuffer_ptr();
-    const fbLen = emulator.get_framebuffer_len();
-    // The framebuffer is a pointer to wasm memory boolean array
-    const fb = new Uint8Array(module.memory.buffer, fbPtr, fbLen);
+    // Get the latest display state from WASM.
+    const display_ptr = emulator.get_display_ptr();
+    const chip8DisplayData = new Uint8Array(module.memory.buffer, display_ptr, width * height);
 
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 2. Loop through our CHIP-8 display data and update our canvas pixel buffer.
+    for (let i = 0; i < chip8DisplayData.length; i++) {
+        // Find the starting index in the RGBA buffer.
+        const canvasIdx = i * 4;
+        const color = chip8DisplayData[i] ? onColor : offColor;
 
-    ctx.fillStyle = 'white';
-    for (let i = 0; i < fbLen; i++) {
-      if (fb[i]) {
-        const x = i % canvas.width;
-        const y = Math.floor(i / canvas.width);
-        ctx.fillRect(x, y, 1, 1);
-      }
+        canvasPixelData[canvasIdx]     = color[0]; // R
+        canvasPixelData[canvasIdx + 1] = color[1]; // G
+        canvasPixelData[canvasIdx + 2] = color[2]; // B
+        canvasPixelData[canvasIdx + 3] = color[3]; // A
     }
+
+    // 3. Make ONE call to put the entire updated buffer onto the canvas.
+    ctx.putImageData(imageData, 0, 0);
   }
 
-  function loop() {
-    emulator.execute_instruction();
-    render();
-    requestAnimationFrame(loop);
+  // --- The Game Loop (remains the same) ---
+  let lastTime = 0;
+  const TARGET_CPS = 700; 
+
+  function game_loop(currentTime) {
+    requestAnimationFrame(game_loop);
+    const deltaTime = currentTime - lastTime;
+    
+    if (deltaTime > 0) {
+      const cyclesToRun = deltaTime * (TARGET_CPS / 1000);
+      emulator.update_timers(deltaTime);
+      for (let i = 0; i < cyclesToRun; i++) {
+          emulator.execute_instruction();
+      }
+      render(); // Call our new, fast render function
+      if (emulator.is_sound_active()) { /* ... */ }
+    }
+
+    lastTime = currentTime;
   }
 
-  loop();
+  requestAnimationFrame(game_loop);
 }
 
 run();

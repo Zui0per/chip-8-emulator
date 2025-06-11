@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct Emulator { 
-    chip8: Chip8
+    chip8: Chip8,
 }
 
 #[wasm_bindgen]
@@ -38,7 +38,7 @@ impl Emulator {
     pub fn new() -> Emulator {
         console_error_panic_hook::set_once();
         Emulator {
-            chip8: Chip8::new()
+            chip8: Chip8::new(),
         }
     }
 
@@ -46,12 +46,16 @@ impl Emulator {
         self.chip8.set_key(key, is_pressed);
     }
 
-    pub fn get_framebuffer_ptr(&self) -> *const [u8; 64] {
-        self.chip8.get_display().as_ptr()
+    pub fn get_display_ptr(&mut self) -> *const u8 {
+        self.chip8.get_display()
     }
 
-    pub fn get_framebuffer_len(&self) -> usize {
-        self.chip8.get_display().len()
+    pub fn get_display_width(&self) -> usize {
+        chip8::DISPLAY_WIDTH as usize
+    }
+
+    pub fn get_display_height(&self) -> usize {
+        chip8::DISPLAY_HEIGHT as usize
     }
 
     pub fn execute_instruction(&mut self) -> u16 {
