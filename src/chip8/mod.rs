@@ -4,6 +4,7 @@ pub const DISPLAY_WIDTH: u8 = 64;
 pub const DISPLAY_HEIGHT: u8 = 32;
 const FONT_START_ADDRESS: u8 = 0;
 const FONT_CHAR_SIZE_IN_BYTES: u8 = 5;
+const TIMER_DECREMENT_FEQUENCY: u8 = 60;
 
 const BULLET_HELL: &[u8] = include_bytes!("./roms/danm8ku.ch8");
 const OCTAJAM_TITLE: &[u8] = include_bytes!("./roms/octojam1title.ch8");
@@ -12,6 +13,7 @@ pub struct Chip8 { registers: [u8; 16],
     i_register: u16,
     sound_timer: u8,
     delay_timer: u8,
+    accumulator_timer: f64,
     position_in_memory: usize,
     memory: [u8; 4096],
     stack: [u16; 16],
@@ -51,6 +53,7 @@ impl Chip8 {
             registers: [0; 16],
             i_register: 0,
             sound_timer: 0, 
+            accumulator_timer: 0.0,
             delay_timer: 0,
             memory: [0; 4096],
             position_in_memory: 0,
@@ -214,12 +217,14 @@ impl Chip8 {
 
     pub fn update_timers(self: &mut Self, elapsed_ms: u16)
     {
-        let ticks = (elapsed_ms as f64 / 1000.0 * 60.0).floor() as u8;
+        self.accumulator_timer += elapsed_ms as f64;
         
-        if (ticks > 0)
+        let duration_ms_between_decrements = 1000.0 / TIMER_DECREMENT_FEQUENCY as f64;
+        
+        if (self.accumulator_timer > duration_ms_between_decrements)
         {
-            self.delay_timer = self.delay_timer.saturating_sub(ticks);
-            self.sound_timer = self.sound_timer.saturating_sub(ticks);
+            self.delay_timer = self.delay_timer.saturating_sub(1);
+            self.sound_timer = self.sound_timer.saturating_sub(1);
         }
     }
 
