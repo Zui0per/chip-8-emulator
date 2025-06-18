@@ -6,8 +6,32 @@ const FONT_START_ADDRESS: u8 = 0;
 const FONT_CHAR_SIZE_IN_BYTES: u8 = 5;
 const TIMER_DECREMENT_FEQUENCY: u8 = 60;
 
-const BULLET_HELL: &[u8] = include_bytes!("./roms/danm8ku.ch8");
 const OCTAJAM_TITLE: &[u8] = include_bytes!("./roms/octojam1title.ch8");
+const PUZZLE_15: &[u8] = include_bytes!("./roms/15PUZZLE");
+const INVADERS: &[u8] = include_bytes!("./roms/INVADERS");
+const GUESS: &[u8] = include_bytes!("./roms/GUESS");
+const PONG: &[u8] = include_bytes!("./roms/PONG");
+const PONG2: &[u8] = include_bytes!("./roms/PONG2");
+const TANK: &[u8] = include_bytes!("./roms/TANK");
+
+const RED_OCTOBER: &[u8] = include_bytes!("./roms/redOctober.ch8");
+const BLINKY: &[u8] = include_bytes!("./roms/BLINKY");
+const BLITZ: &[u8] = include_bytes!("./roms/BLITZ");
+const BRIX: &[u8] = include_bytes!("./roms/BRIX");
+const CONNECT: &[u8] = include_bytes!("./roms/CONNECT4");
+const HIDDEN: &[u8] = include_bytes!("./roms/HIDDEN");
+const KALEID: &[u8] = include_bytes!("./roms/KALEID");
+const MAZE: &[u8] = include_bytes!("./roms/MAZE");
+const MERLIN: &[u8] = include_bytes!("./roms/MERLIN");
+const MISSILE: &[u8] = include_bytes!("./roms/MISSILE");
+const PUZZLE: &[u8] = include_bytes!("./roms/PUZZLE");
+const SYZYGY: &[u8] = include_bytes!("./roms/SYZYGY");
+const TETRIS: &[u8] = include_bytes!("./roms/TETRIS");
+const TICTAC: &[u8] = include_bytes!("./roms/TICTAC");
+const UFO: &[u8] = include_bytes!("./roms/UFO");
+const VBRIX: &[u8] = include_bytes!("./roms/VBRIX");
+const VERS: &[u8] = include_bytes!("./roms/VERS");
+const WIPEOFF: &[u8] = include_bytes!("./roms/WIPEOFF");
 
 pub struct Chip8 { registers: [u8; 16],
     i_register: u16,
@@ -64,7 +88,7 @@ impl Chip8 {
         };
 
         chip8.fill_reserved_memory();
-        chip8.load_rom();
+        chip8.load_rom_in_memory("octajam_title".to_string());
         chip8
     }
 
@@ -233,13 +257,47 @@ impl Chip8 {
         self.sound_timer > 0
     }
 
-    pub fn load_rom(self: &mut Self)
+    pub fn load_rom_in_memory(self: &mut Self, name: String)
     {
+        let rom = Chip8::get_rom(name.as_str())
+            .ok_or_else( || format!("ROM not found: '{}'", name)).unwrap();
+
         let start = 0x200;
-        let end = start + OCTAJAM_TITLE.len();
-        self.memory[start..end].copy_from_slice(OCTAJAM_TITLE);
+        let end = start + rom.len();
+        self.memory[start..end].copy_from_slice(rom);
         
         self.position_in_memory = 0x200;
+    }
+
+    fn get_rom(name: &str) -> Option<&[u8]> {
+        match name {
+            "octajam_title" => Some(OCTAJAM_TITLE),
+            "red_october" => Some(RED_OCTOBER),
+            "puzzle_15" => Some(PUZZLE_15),
+            "blinky" => Some(BLINKY),
+            "blitz" => Some(BLITZ),
+            "brix" => Some(BRIX),
+            "connect" => Some(CONNECT),
+            "guess" => Some(GUESS),
+            "hidden" => Some(HIDDEN),
+            "invaders" => Some(INVADERS),
+            "kaleid" => Some(KALEID),
+            "maze" => Some(MAZE),
+            "merlin" => Some(MERLIN),
+            "missile" => Some(MISSILE),
+            "pong" => Some(PONG),
+            "pong2" => Some(PONG2),
+            "puzzle" => Some(PUZZLE),
+            "syzygy" => Some(SYZYGY),
+            "tank" => Some(TANK),
+            "tetris" => Some(TETRIS),
+            "tictac" => Some(TICTAC),
+            "ufo" => Some(UFO),
+            "vbrix" => Some(VBRIX),
+            "vers" => Some(VERS),
+            "wipeoff" => Some(WIPEOFF),
+            _ => None,
+        }
     }
 
     fn read_opcode(self: &Self) -> u16 {
@@ -531,6 +589,8 @@ impl Chip8 {
             self.memory[i as usize] = self.registers[n as usize];
             i += 1;
         }
+
+        self.i_register += (x + 1) as u16
     }
 
     fn ld_vx_i(&mut self, opcode: u16)
@@ -544,6 +604,7 @@ impl Chip8 {
             i += 1;
         }
  
+        self.i_register += (x + 1) as u16
     }
 }
 

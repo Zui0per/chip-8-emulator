@@ -10,6 +10,7 @@ export class Emulator {
   execute_instruction(): number;
   update_timers(elapsed_ms: number): void;
   is_sound_active(): boolean;
+  load_rom(name: string): void;
   get_register_snapshot(): RegistersSnapshot;
 }
 export class RegistersSnapshot {
@@ -94,6 +95,7 @@ export interface InitOutput {
   readonly emulator_execute_instruction: (a: number) => number;
   readonly emulator_update_timers: (a: number, b: number) => void;
   readonly emulator_is_sound_active: (a: number) => number;
+  readonly emulator_load_rom: (a: number, b: number, c: number) => void;
   readonly emulator_get_register_snapshot: (a: number) => number;
   readonly __wbindgen_exn_store: (a: number) => void;
   readonly __externref_table_alloc: () => number;

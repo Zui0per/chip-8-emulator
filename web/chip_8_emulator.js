@@ -174,6 +174,14 @@ export class Emulator {
         return ret !== 0;
     }
     /**
+     * @param {string} name
+     */
+    load_rom(name) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.emulator_load_rom(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
      * @returns {RegistersSnapshot}
      */
     get_register_snapshot() {

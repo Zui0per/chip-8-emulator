@@ -14,5 +14,5 @@ target
 **/mutants.out*/
 
 # Build output
-web
-pkg
+web/
+pkg/

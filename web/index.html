@@ -1,22 +1,66 @@
-<!-- AI generated -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>CHIP-8 Emulator</title>
-  <style>
-    canvas {
-      image-rendering: pixelated;
-      width: 640px;
-      height: 320px;
-      background-color: black;
-      display: block;
-      margin: 0 auto;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text x=%2250%22 y=%2282%22 font-size=%2285%22 font-family=%22monospace%22 font-weight=%22bold%22 fill=%22%23000000%22 text-anchor=%22middle%22>C8</text></svg>">
 </head>
 <body>
-  <canvas id="screen" width="64" height="32"></canvas>
+  <div class="app-container">
+    <header>
+      <h1>CHIP-8 Emulator</h1>
+      <div class="controls">
+        <label for="rom-select">Load ROM:</label>
+        <select id="rom-select"></select>
+      </div>
+    </header>
+
+    <main>
+      <canvas id="screen"></canvas>
+    </main>
+
+    <footer>
+      <div class="panel">
+        <h2>Registers</h2>
+        <div id="registers-view" class="register-grid"></div>
+      </div>
+      <div class="panel">
+        <h2>Last 10 Instructions</h2>
+        <ul id="instruction-list"></ul>
+      </div>
+      <!-- NEW CONTROLS PANEL -->
+      <div class="panel">
+        <h2>Controls</h2>
+        <p class="controls-info">
+          The specific actions for each key depend on the game. You'll need to experiment to discover how to play each one!
+        </p>
+        <div class="keyboard-grid">
+          <!-- Row 1 -->
+          <div class="key">1</div>
+          <div class="key">2</div>
+          <div class="key">3</div>
+          <div class="key">4</div>
+          <!-- Row 2 -->
+          <div class="key">Q</div>
+          <div class="key">W</div>
+          <div class="key">E</div>
+          <div class="key">R</div>
+          <!-- Row 3 -->
+          <div class="key">A</div>
+          <div class="key">S</div>
+          <div class="key">D</div>
+          <div class="key">F</div>
+          <!-- Row 4 -->
+          <div class="key">Y/Z</div>
+          <div class="key">X</div>
+          <div class="key">C</div>
+          <div class="key">V</div>
+        </div>
+      </div>
+    </footer>
+  </div>
+  
   <script type="module" src="./main.js"></script>
 </body>
 </html>

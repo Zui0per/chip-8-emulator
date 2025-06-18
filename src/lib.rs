@@ -70,6 +70,10 @@ impl Emulator {
         self.chip8.is_sound_active()
     }
 
+    pub fn load_rom(&mut self, name: String) {
+        self.chip8.load_rom_in_memory(name);
+    }
+
     pub fn get_register_snapshot(&self) -> RegistersSnapshot {
         let registers = self.chip8.get_register_snapshot();
 

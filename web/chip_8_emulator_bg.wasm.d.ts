@@ -53,6 +53,7 @@ export const emulator_get_display_height: (a: number) => number;
 export const emulator_execute_instruction: (a: number) => number;
 export const emulator_update_timers: (a: number, b: number) => void;
 export const emulator_is_sound_active: (a: number) => number;
+export const emulator_load_rom: (a: number, b: number, c: number) => void;
 export const emulator_get_register_snapshot: (a: number) => number;
 export const __wbindgen_exn_store: (a: number) => void;
 export const __externref_table_alloc: () => number;
