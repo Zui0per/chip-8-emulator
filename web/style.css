@@ -1,0 +1,178 @@
+:root {
+  --primary-color: #00ffc3;
+  --background-color: #1a1a1a;
+  --panel-background: #2c2c2c;
+  --item-background: #3a3a3a;
+  --text-color: #e0e0e0;
+  --font-mono: 'Courier New', Courier, monospace;
+}
+
+body {
+  margin: 0;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 40px;
+  min-height: 100vh;
+}
+
+.app-container {
+  background-color: var(--panel-background);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  width: 960px; /* Increased width to accommodate the new panel */
+  overflow: hidden;
+}
+
+header {
+  padding: 20px;
+  background-color: var(--item-background);
+  border-bottom: 1px solid #444;
+}
+
+header h1 {
+  margin: 0;
+  color: var(--primary-color);
+  text-align: center;
+  font-size: 1.8em;
+  margin-bottom: 15px;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.controls label {
+  font-weight: bold;
+}
+
+#rom-select {
+  background-color: #555;
+  color: var(--text-color);
+  border: 1px solid #666;
+  border-radius: 5px;
+  padding: 8px 12px;
+  font-size: 1em;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+main {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  background-color: #000;
+}
+
+#screen {
+  /* Let the element fill the available width of its parent */
+  width: 100%; 
+  
+  /* Remove any fixed height. The browser will calculate it automatically */
+  height: auto; 
+
+  /* This is the key property for sharp pixel art scaling */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges; /* Firefox */
+  image-rendering: crisp-edges;      /* Chrome, etc. */
+
+  /* A background color is good for when the ROM hasn't drawn anything yet */
+  background-color: black;
+}
+
+footer {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  background-color: var(--item-background);
+  border-top: 1px solid #444;
+}
+
+.panel {
+  background: var(--panel-background);
+  color: white;
+  padding: 16px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
+}
+
+.panel h2 {
+  color: var(--primary-color);
+  font-size: 1.2em;
+  margin-top: 0;
+  border-bottom: 1px solid #444;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+#instruction-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.9em;
+}
+
+#instruction-list li {
+  background: var(--item-background);
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  color: #aaffaa;
+}
+
+.register-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+.register-grid div {
+  background: var(--item-background);
+  padding: 6px 10px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.register-grid .reg-name {
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+/* --- NEW STYLES FOR CONTROLS PANEL --- */
+
+.controls-info {
+  font-size: 0.85em;
+  color: #bbb;
+  margin-bottom: 16px;
+  line-height: 1.4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.keyboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.keyboard-grid .key {
+  background: var(--item-background);
+  border-radius: 5px;
+  padding: 12px 0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.1em;
+  color: var(--primary-color);
+  border: 1px solid #555;
+  box-shadow: 0 2px 0 #222;
+  user-select: none; /* Prevent text selection on click */
+}

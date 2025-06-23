@@ -1,0 +1,11 @@
+{
+  "name": "chip-8-emulator",
+  "type": "module",
+  "version": "0.1.0",
+  "main": "chip_8_emulator.js",
+  "types": "chip_8_emulator.d.ts",
+  "scripts": {
+    "build-wasm": "wasm-pack build ../. --target web --release --no-typescript --out-dir web/wasm --no-pack",
+    "test": "cargo test"
+  }
+}

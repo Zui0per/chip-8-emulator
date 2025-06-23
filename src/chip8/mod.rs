@@ -380,7 +380,7 @@ impl Chip8 {
         let kk = (opcode & 0x00FF) as u8;
         let x = ((opcode & 0x0F00) >> 8) as u8;
 
-       self.registers[x as usize] += kk; 
+       self.registers[x as usize] = self.registers[x as usize].wrapping_add(kk); 
     }
 
     fn ld_vx_vy(&mut self, x: u8, y: u8)
@@ -429,14 +429,14 @@ impl Chip8 {
             self.registers[0xF] = 0;
         }
 
-        self.registers[x as usize]  = self.registers[y as usize] - self.registers[x as usize];
+        self.registers[x as usize]  = self.registers[y as usize].wrapping_sub(self.registers[x as usize]);
     }
     
     fn shl_vx_vy(&mut self, x: u8, y: u8) {
         let msb = self.registers[x as usize] >> 7;
         self.registers[0xF] = msb;
         
-        self.registers[x as usize] *= 2;
+        self.registers[x as usize] = self.registers[x as usize].wrapping_mul(2);
     }
 
     fn sne_vx_vy(&mut self, opcode: u16) {
@@ -608,3 +608,700 @@ impl Chip8 {
     }
 }
 
+// AI generated tests (specification used as input)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper function to create a Chip8 instance and load a single opcode at the start address.
+    fn setup_with_opcode(opcode: u16) -> Chip8 {
+        let mut chip8 = Chip8::new();
+        // Overwrite the default loaded ROM for a clean test environment.
+        chip8.position_in_memory = 0x200;
+        chip8.memory[0x200] = (opcode >> 8) as u8;
+        chip8.memory[0x201] = (opcode & 0x00FF) as u8;
+        chip8
+    }
+
+    #[test]
+    fn test_00e0_cls() {
+        let mut chip8 = setup_with_opcode(0x00E0);
+        // Arrange: Dirty the display
+        chip8.display[10][20] = 1;
+        chip8.display[31][63] = 1;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: The entire display should be cleared
+        for y in 0..DISPLAY_HEIGHT as usize {
+            for x in 0..DISPLAY_WIDTH as usize {
+                assert_eq!(chip8.display[y][x], 0, "Pixel at ({}, {}) was not cleared", x, y);
+            }
+        }
+    }
+
+    #[test]
+    fn test_00ee_ret() {
+        let mut chip8 = setup_with_opcode(0x00EE);
+        // Arrange: Simulate a subroutine call
+        chip8.stack_pointer = 1;
+        chip8.stack[0] = 0x350; // Return address
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: PC should be the return address and stack pointer decremented
+        assert_eq!(chip8.position_in_memory, 0x350);
+        assert_eq!(chip8.stack_pointer, 0);
+    }
+
+    #[test]
+    fn test_1nnn_jp_addr() {
+        let mut chip8 = setup_with_opcode(0x1ABC);
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is set to nnn, not pc + 2
+        assert_eq!(chip8.position_in_memory, 0xABC);
+    }
+
+    #[test]
+    fn test_2nnn_call_addr() {
+        let mut chip8 = setup_with_opcode(0x2ABC);
+        let initial_pc = chip8.position_in_memory;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.position_in_memory, 0xABC, "PC should be at the new address");
+        assert_eq!(chip8.stack_pointer, 1, "Stack pointer should be incremented");
+        assert_eq!(chip8.stack[0] as usize, initial_pc + 2, "Return address on stack should be the next instruction");
+    }
+
+    #[test]
+    fn test_3xkk_se_vx_byte_skip() {
+        let mut chip8 = setup_with_opcode(0x35AB);
+        // Arrange: Set V5 to the value to match
+        chip8.registers[5] = 0xAB;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is incremented by 4 (2 for the instruction, 2 for the skip)
+        assert_eq!(chip8.position_in_memory, 0x204);
+    }
+    
+    #[test]
+    fn test_3xkk_se_vx_byte_no_skip() {
+        let mut chip8 = setup_with_opcode(0x35AB);
+        // Arrange: Set V5 to a different value
+        chip8.registers[5] = 0xAC;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is incremented by 2
+        assert_eq!(chip8.position_in_memory, 0x202);
+    }
+    
+    #[test]
+    fn test_4xkk_sne_vx_byte_skip() {
+        let mut chip8 = setup_with_opcode(0x45AB);
+        // Arrange: Set V5 to a different value
+        chip8.registers[5] = 0xAC;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is incremented by 4
+        assert_eq!(chip8.position_in_memory, 0x204);
+    }
+
+    #[test]
+    fn test_4xkk_sne_vx_byte_no_skip() {
+        let mut chip8 = setup_with_opcode(0x45AB);
+        // Arrange: Set V5 to the same value
+        chip8.registers[5] = 0xAB;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is incremented by 2
+        assert_eq!(chip8.position_in_memory, 0x202);
+    }
+
+    #[test]
+    fn test_5xy0_se_vx_vy_skip() {
+        let mut chip8 = setup_with_opcode(0x5120);
+        // Arrange: Set V1 and V2 to be equal
+        chip8.registers[1] = 0xDD;
+        chip8.registers[2] = 0xDD;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is skipped
+        assert_eq!(chip8.position_in_memory, 0x204);
+    }
+    
+    #[test]
+    fn test_5xy0_se_vx_vy_no_skip() {
+        let mut chip8 = setup_with_opcode(0x5120);
+        // Arrange: Set V1 and V2 to be different
+        chip8.registers[1] = 0xDD;
+        chip8.registers[2] = 0xDE;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC is not skipped
+        assert_eq!(chip8.position_in_memory, 0x202);
+    }
+    
+    #[test]
+    fn test_6xkk_ld_vx_byte() {
+        let mut chip8 = setup_with_opcode(0x6ABC);
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: VA now holds the value 0xBC
+        assert_eq!(chip8.registers[0xA], 0xBC);
+    }
+    
+    #[test]
+    fn test_7xkk_add_vx_byte() {
+        let mut chip8 = setup_with_opcode(0x7310);
+        // Arrange: Put a value in V3 to add to
+        chip8.registers[3] = 0x05;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: V3 is now 0x05 + 0x10 = 0x15
+        assert_eq!(chip8.registers[3], 0x15);
+    }
+
+    #[test]
+    fn test_7xkk_add_vx_byte_with_wrap() {
+        let mut chip8 = setup_with_opcode(0x7310);
+        // Arrange: Put a value in V3 that will cause an overflow
+        chip8.registers[3] = 0xFF;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: V3 wraps around (0xFF + 0x10 = 0x10F -> 0x0F)
+        // VF is NOT changed by this operation.
+        assert_eq!(chip8.registers[3], 0x0F);
+        assert_eq!(chip8.registers[0xF], 0); // VF untouched
+    }
+
+    #[test]
+    fn test_8xy0_ld_vx_vy() {
+        let mut chip8 = setup_with_opcode(0x8120);
+        // Arrange
+        chip8.registers[2] = 0xCC;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert: V1 now holds the value from V2
+        assert_eq!(chip8.registers[1], 0xCC);
+    }
+
+    #[test]
+    fn test_8xy1_or_vx_vy() {
+        let mut chip8 = setup_with_opcode(0x8121);
+        // Arrange
+        chip8.registers[1] = 0b1010_1100;
+        chip8.registers[2] = 0b0101_1010;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: V1 is the bitwise OR
+        assert_eq!(chip8.registers[1], 0b1111_1110);
+    }
+    
+    #[test]
+    fn test_8xy2_and_vx_vy() {
+        let mut chip8 = setup_with_opcode(0x8122);
+        // Arrange
+        chip8.registers[1] = 0b1010_1100;
+        chip8.registers[2] = 0b0101_1010;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: V1 is the bitwise AND
+        assert_eq!(chip8.registers[1], 0b0000_1000);
+    }
+    
+    #[test]
+    fn test_8xy3_xor_vx_vy() {
+        let mut chip8 = setup_with_opcode(0x8123);
+        // Arrange
+        chip8.registers[1] = 0b1010_1100;
+        chip8.registers[2] = 0b0101_1010;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: V1 is the bitwise XOR
+        assert_eq!(chip8.registers[1], 0b1111_0110);
+    }
+
+    #[test]
+    fn test_8xy4_add_vx_vy_no_carry() {
+        let mut chip8 = setup_with_opcode(0x8124);
+        // Arrange
+        chip8.registers[1] = 100;
+        chip8.registers[2] = 50;
+        
+        // Act
+        chip8.execute_step();
+
+        // Assert
+        assert_eq!(chip8.registers[1], 150);
+        assert_eq!(chip8.registers[0xF], 0, "VF should be 0 for no carry");
+    }
+    
+    #[test]
+    fn test_8xy4_add_vx_vy_with_carry() {
+        let mut chip8 = setup_with_opcode(0x8124);
+        // Arrange
+        chip8.registers[1] = 200;
+        chip8.registers[2] = 100;
+        
+        // Act
+        chip8.execute_step();
+
+        // Assert: 200 + 100 = 300 -> 44 (with carry)
+        assert_eq!(chip8.registers[1], 44);
+        assert_eq!(chip8.registers[0xF], 1, "VF should be 1 for carry");
+    }
+
+    #[test]
+    fn test_8xy5_sub_vx_vy_no_borrow() {
+        let mut chip8 = setup_with_opcode(0x8125);
+        // Arrange: Vx > Vy
+        chip8.registers[1] = 100;
+        chip8.registers[2] = 50;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: VF is 1 (NOT borrow)
+        assert_eq!(chip8.registers[1], 50);
+        assert_eq!(chip8.registers[0xF], 1);
+    }
+    
+    #[test]
+    fn test_8xy5_sub_vx_vy_with_borrow() {
+        let mut chip8 = setup_with_opcode(0x8125);
+        // Arrange: Vx < Vy
+        chip8.registers[1] = 50;
+        chip8.registers[2] = 100;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: VF is 0 (borrow)
+        assert_eq!(chip8.registers[1], 206); // 50 - 100 wraps
+        assert_eq!(chip8.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_8xy6_shr_vx_lsb_one() {
+        let mut chip8 = setup_with_opcode(0x8106); // y is ignored
+        // Arrange: Vx has LSB of 1
+        chip8.registers[1] = 0b10101011;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.registers[1], 0b01010101);
+        assert_eq!(chip8.registers[0xF], 1);
+    }
+    
+    #[test]
+    fn test_8xy6_shr_vx_lsb_zero() {
+        let mut chip8 = setup_with_opcode(0x8106); // y is ignored
+        // Arrange: Vx has LSB of 0
+        chip8.registers[1] = 0b10101010;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.registers[1], 0b01010101);
+        assert_eq!(chip8.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_8xy7_subn_vx_vy_no_borrow() {
+        let mut chip8 = setup_with_opcode(0x8127);
+        // Arrange: Vy > Vx
+        chip8.registers[1] = 50;
+        chip8.registers[2] = 100;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: Vx = Vy - Vx, VF is 1 (NOT borrow)
+        assert_eq!(chip8.registers[1], 50);
+        assert_eq!(chip8.registers[0xF], 1);
+    }
+    
+    #[test]
+    fn test_8xy7_subn_vx_vy_with_borrow() {
+        let mut chip8 = setup_with_opcode(0x8127);
+        // Arrange: Vy < Vx
+        chip8.registers[1] = 100;
+        chip8.registers[2] = 50;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: Vx = Vy - Vx, VF is 0 (borrow)
+        assert_eq!(chip8.registers[1], 206); // 50 - 100 wraps
+        assert_eq!(chip8.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_8xye_shl_vx_msb_one() {
+        let mut chip8 = setup_with_opcode(0x810E); // y is ignored
+        // Arrange: Vx has MSB of 1
+        chip8.registers[1] = 0b10101010;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.registers[1], 0b01010100);
+        assert_eq!(chip8.registers[0xF], 1);
+    }
+    
+    #[test]
+    fn test_8xye_shl_vx_msb_zero() {
+        let mut chip8 = setup_with_opcode(0x810E); // y is ignored
+        // Arrange: Vx has MSB of 0
+        chip8.registers[1] = 0b01010101;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.registers[1], 0b10101010);
+        assert_eq!(chip8.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_9xy0_sne_vx_vy_skip() {
+        let mut chip8 = setup_with_opcode(0x9120);
+        // Arrange
+        chip8.registers[1] = 0xAA;
+        chip8.registers[2] = 0xBB;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.position_in_memory, 0x204);
+    }
+
+    #[test]
+    fn test_annn_ld_i_addr() {
+        let mut chip8 = setup_with_opcode(0xA123);
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.i_register, 0x123);
+    }
+
+    #[test]
+    fn test_bnnn_jp_v0_addr() {
+        let mut chip8 = setup_with_opcode(0xB300);
+        // Arrange
+        chip8.registers[0] = 0x50;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.position_in_memory, 0x350);
+    }
+
+    #[test]
+    fn test_cxkk_rnd_vx_byte() {
+        let mut chip8 = setup_with_opcode(0xC10F);
+        // Arrange: mask is 0x0F
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: We can't know the random number, but we can know it was ANDed with the mask.
+        // The result in V1 must be between 0 and 15.
+        let result = chip8.registers[1];
+        assert!(result <= 0x0F, "RND result {} was not masked with 0x0F", result);
+    }
+
+    #[test]
+    fn test_dxyn_drw_no_collision() {
+        let mut chip8 = setup_with_opcode(0xD011); // Draw at (V0, V1) a 1-byte sprite
+        // Arrange
+        chip8.registers[0] = 10; // x-coord
+        chip8.registers[1] = 20; // y-coord
+        chip8.i_register = 0x300;
+        chip8.memory[0x300] = 0b10101010;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: Check pixels were drawn correctly
+        assert_eq!(chip8.display[20][10], 1);
+        assert_eq!(chip8.display[20][11], 0);
+        assert_eq!(chip8.display[20][12], 1);
+        assert_eq!(chip8.display[20][13], 0);
+        // ... and so on
+        assert_eq!(chip8.display[20][17], 0);
+
+        // Assert: VF is 0 for no collision
+        assert_eq!(chip8.registers[0xF], 0);
+    }
+
+    #[test]
+    fn test_dxyn_drw_with_collision() {
+        let mut chip8 = setup_with_opcode(0xD011);
+        // Arrange
+        chip8.registers[0] = 10;
+        chip8.registers[1] = 20;
+        chip8.i_register = 0x300;
+        chip8.memory[0x300] = 0b11000000;
+        // Pre-set a pixel that will be turned off
+        chip8.display[20][10] = 1;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: Pixel is turned off (1 XOR 1 = 0)
+        assert_eq!(chip8.display[20][10], 0);
+        // Another pixel is turned on (0 XOR 1 = 1)
+        assert_eq!(chip8.display[20][11], 1);
+
+        // Assert: VF is 1 for collision
+        assert_eq!(chip8.registers[0xF], 1);
+    }
+    
+    #[test]
+    fn test_dxyn_drw_wrapping() {
+        let mut chip8 = setup_with_opcode(0xD011);
+        // Arrange
+        chip8.registers[0] = 62; // x-coord near the edge
+        chip8.registers[1] = 10; // y-coord
+        chip8.i_register = 0x300;
+        // This sprite is 8 pixels wide. '1's will be at x=62, 63, 0, 1
+        chip8.memory[0x300] = 0b11110000;
+
+        // Act
+        chip8.execute_step();
+
+        // Assert: Check pixels on both sides of the screen
+        assert_eq!(chip8.display[10][62], 1);
+        assert_eq!(chip8.display[10][63], 1);
+        assert_eq!(chip8.display[10][0], 1);
+        assert_eq!(chip8.display[10][1], 1);
+        assert_eq!(chip8.display[10][2], 0);
+    }
+
+    #[test]
+    fn test_ex9e_skp_vx_skip() {
+        let mut chip8 = setup_with_opcode(0xE59E);
+        // Arrange
+        chip8.registers[5] = 0xA; // Key 'A' (10)
+        chip8.keyboard[0xA] = true; // Key 'A' is pressed
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.position_in_memory, 0x204);
+    }
+
+    #[test]
+    fn test_exa1_sknp_vx_skip() {
+        let mut chip8 = setup_with_opcode(0xE5A1);
+        // Arrange
+        chip8.registers[5] = 0xA; // Key 'A'
+        chip8.keyboard[0xA] = false; // Key 'A' is NOT pressed
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.position_in_memory, 0x204);
+    }
+
+    #[test]
+    fn test_fx07_ld_vx_dt() {
+        let mut chip8 = setup_with_opcode(0xF307);
+        // Arrange
+        chip8.delay_timer = 55;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.registers[3], 55);
+    }
+
+    #[test]
+    fn test_fx0a_ld_vx_k_wait() {
+        let mut chip8 = setup_with_opcode(0xF30A);
+        // Arrange: No keys are pressed
+        chip8.keyboard = [false; 16];
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC does not advance (it is decremented after being incremented)
+        assert_eq!(chip8.position_in_memory, 0x200);
+    }
+    
+    #[test]
+    fn test_fx0a_ld_vx_k_key_pressed() {
+        let mut chip8 = setup_with_opcode(0xF30A);
+        // Arrange
+        chip8.keyboard[0xC] = true;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: PC advances and V3 gets the key value
+        assert_eq!(chip8.position_in_memory, 0x202);
+        assert_eq!(chip8.registers[3], 0xC);
+    }
+    
+    #[test]
+    fn test_fx15_ld_dt_vx() {
+        let mut chip8 = setup_with_opcode(0xF815);
+        // Arrange
+        chip8.registers[8] = 99;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.delay_timer, 99);
+    }
+    
+    #[test]
+    fn test_fx18_ld_st_vx() {
+        let mut chip8 = setup_with_opcode(0xF818);
+        // Arrange
+        chip8.registers[8] = 123;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.sound_timer, 123);
+    }
+    
+    #[test]
+    fn test_fx1e_add_i_vx() {
+        let mut chip8 = setup_with_opcode(0xF51E);
+        // Arrange
+        chip8.i_register = 0x100;
+        chip8.registers[5] = 0x50;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert
+        assert_eq!(chip8.i_register, 0x150);
+    }
+    
+    #[test]
+    fn test_fx29_ld_f_vx() {
+        let mut chip8 = setup_with_opcode(0xF229);
+        // Arrange: Character '2'
+        chip8.registers[2] = 0x2;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert: I should point to the location of sprite '2'
+        // Each font character is 5 bytes long.
+        assert_eq!(chip8.i_register, (0x2 * FONT_CHAR_SIZE_IN_BYTES) as u16);
+    }
+    
+    #[test]
+    fn test_fx33_ld_b_vx() {
+        let mut chip8 = setup_with_opcode(0xF733);
+        // Arrange
+        chip8.registers[7] = 243; // Decimal value
+        chip8.i_register = 0x300;
+
+        // Act
+        chip8.execute_step();
+        
+        // Assert: BCD representation is stored in memory
+        assert_eq!(chip8.memory[0x300], 2); // Hundreds
+        assert_eq!(chip8.memory[0x301], 4); // Tens
+        assert_eq!(chip8.memory[0x302], 3); // Ones
+    }
+
+    #[test]
+    fn test_fx55_ld_i_vx() {
+        let mut chip8 = setup_with_opcode(0xF355);
+        // Arrange
+        chip8.i_register = 0x400;
+        chip8.registers[0] = 0x11;
+        chip8.registers[1] = 0x22;
+        chip8.registers[2] = 0x33;
+        chip8.registers[3] = 0x44;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: Memory contains register values
+        assert_eq!(chip8.memory[0x400], 0x11);
+        assert_eq!(chip8.memory[0x401], 0x22);
+        assert_eq!(chip8.memory[0x402], 0x33);
+        assert_eq!(chip8.memory[0x403], 0x44);
+
+        // Assert: Check I register modification (based on your implementation)
+        assert_eq!(chip8.i_register, 0x400 + (3 + 1));
+    }
+
+    #[test]
+    fn test_fx65_ld_vx_i() {
+        let mut chip8 = setup_with_opcode(0xF365);
+        // Arrange
+        chip8.i_register = 0x400;
+        chip8.memory[0x400] = 0xAA;
+        chip8.memory[0x401] = 0xBB;
+        chip8.memory[0x402] = 0xCC;
+        chip8.memory[0x403] = 0xDD;
+        
+        // Act
+        chip8.execute_step();
+        
+        // Assert: Registers contain memory values
+        assert_eq!(chip8.registers[0], 0xAA);
+        assert_eq!(chip8.registers[1], 0xBB);
+        assert_eq!(chip8.registers[2], 0xCC);
+        assert_eq!(chip8.registers[3], 0xDD);
+        
+        // Assert: Check I register modification (based on your implementation)
+        assert_eq!(chip8.i_register, 0x400 + (3 + 1));
+    }
+}

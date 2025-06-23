@@ -1,5 +1,5 @@
 // AI generated 
-import init, { Emulator } from './chip_8_emulator.js';
+import init, { Emulator } from './wasm/chip_8_emulator.js';
 
 // --- Global State ---
 let emulator;
