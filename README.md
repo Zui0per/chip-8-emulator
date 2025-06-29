@@ -12,7 +12,7 @@ Note: While both are valuable resources, they occasionally contradict each other
 
 ## Live Demo
 
-**[> Try it out here! <](https://zui0per.github.io/Chip8/)**
+**[> Try it out here! <](https://snailtempo.github.io/Chip8/)**
 
 ---
 
