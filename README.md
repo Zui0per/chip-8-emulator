@@ -4,7 +4,9 @@ To be precise, Chip-8 is an interpreter, not an emulator. The goal of Chip-8 was
 
 I came across Chip-8 while reading *Rust in Action: Systems Programming Concepts and Techniques*. The book briefly touches on Chip-8 in the context of CPU emulation. I therefore just went with the name "Chip-8 Emulator."
 
-As a guide for the implementation, I used [Cowgod's technical reference](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM).
+As a guide for the implementation, I used [Cowgod's technical reference](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM) and the [article from Joseph Weisbecker](https://archive.org/details/byte-magazine-1978-12/page/n109/mode/2up?view=theater&q=easy+programming+system).
+
+Note: While both are valuable resources, they occasionally contradict each other and lack clarity in certain areas. In practice, not all ROMs behave consistently—some appear to rely on specific, undocumented quirks or variations of the Chip-8 specification. As a result, building an implementation that works flawlessly with every ROM is quite challenging. Not all ROMs will work correctly with this emulator.
 
 ---
 
